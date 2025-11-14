@@ -12,7 +12,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 app = Flask(__name__)
-client = Groq(api_key="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")
+client = Groq(api_key=os.getenv("GROQ_API_KEY"))
 
 
 # -----------------------------------
