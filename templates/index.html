@@ -3,6 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <title>AI Voice Bot</title>
+
+    <!-- Markdown Rendering (marked.js) -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+
     <style>
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
@@ -25,6 +29,7 @@
             font-size: 24px;
             font-weight: 600;
         }
+
         #chatContainer {
             flex: 1;
             overflow-y: auto;
@@ -50,9 +55,36 @@
             color: #fff;
         }
 
+        /* Markdown styling */
+        .bot-message h1, 
+        .bot-message h2, 
+        .bot-message h3 {
+            margin: 6px 0;
+            font-weight: 600;
+        }
+        .bot-message ul, 
+        .bot-message ol {
+            margin-left: 20px;
+        }
+        .bot-message table {
+            width: 100%;
+            border-collapse: collapse;
+            background: #222;
+            margin-top: 10px;
+        }
+        .bot-message th,
+        .bot-message td {
+            border: 1px solid #444;
+            padding: 8px;
+        }
+        .bot-message code {
+            background: #222;
+            padding: 3px 5px;
+            border-radius: 4px;
+        }
+
         #inputContainer {
             display: flex;
-            align-items: center;
             padding: 20px;
             background: #111;
             border-top: 1px solid #333;
@@ -60,36 +92,24 @@
         #textInput {
             flex: 1;
             padding: 12px 16px;
-            border: none;
             border-radius: 24px;
             background: #333;
             color: #fff;
-            font-size: 16px;
-            margin-right: 10px;
+            border: none;
             outline: none;
-        }
-        #textInput::placeholder {
-            color: #888;
+            margin-right: 10px;
         }
         .input-button {
-            padding: 12px;
-            background: #007bff;
-            border: none;
-            border-radius: 50%;
-            color: #fff;
-            cursor: pointer;
             width: 44px;
             height: 44px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            margin-left: 5px;
-        }
-        .input-button:hover {
-            background: #0056b3;
+            border-radius: 50%;
+            background: #007bff;
+            border: none;
+            color: #fff;
+            font-size: 20px;
+            cursor: pointer;
         }
 
-        /* Toast Popup */
         #toast {
             position: fixed;
             bottom: 20px;
@@ -100,15 +120,15 @@
             padding: 12px 20px;
             border-radius: 8px;
             opacity: 0;
+            transition: opacity 0.4s;
             pointer-events: none;
-            transition: opacity 0.4s ease;
-            font-size: 15px;
         }
         #toast.show {
             opacity: 1;
         }
     </style>
 </head>
+
 <body>
 
 <header>
@@ -121,41 +141,36 @@
 
 <div id="inputContainer">
     <input id="textInput" placeholder="Type your message..." />
-    <button id="micBtn" class="input-button" onclick="toggleRecording()" title="Voice Input">🎤</button>
-    <button id="sendBtn" class="input-button" onclick="sendText()" title="Send">➤</button>
+    <button id="micBtn" class="input-button" onclick="toggleRecording()">🎤</button>
+    <button class="input-button" onclick="sendText()">➤</button>
 </div>
 
-<!-- Hidden Audio Player -->
 <audio id="responseAudio" autoplay></audio>
 
-<!-- Toast Popup -->
 <div id="toast"></div>
 
+
 <script>
-let mediaRecorder;
-let audioChunks = [];
-let isRecording = false;
+let mediaRecorder, audioChunks = [], isRecording = false;
 
 function addMessage(text, isUser = false) {
-    const messagesDiv = document.getElementById("messages");
-    const messageDiv = document.createElement("div");
-    messageDiv.className = `message ${isUser ? 'user-message' : 'bot-message'}`;
-    messageDiv.innerText = text;
-    messagesDiv.appendChild(messageDiv);
-    messagesDiv.scrollTop = messagesDiv.scrollHeight;
+    const msgBox = document.getElementById("messages");
+    const div = document.createElement("div");
+    div.className = `message ${isUser ? "user-message" : "bot-message"}`;
+
+    if (isUser) div.innerText = text;
+    else div.innerHTML = marked.parse(text);
+
+    msgBox.appendChild(div);
+    msgBox.scrollTop = msgBox.scrollHeight;
 }
 
-// ---------- TOAST POPUP ----------
-function showToast(message) {
+function showToast(msg) {
     const toast = document.getElementById("toast");
-    toast.innerText = message;
+    toast.innerText = msg;
     toast.classList.add("show");
-
-    setTimeout(() => {
-        toast.classList.remove("show");
-    }, 1500);
+    setTimeout(() => toast.classList.remove("show"), 1500);
 }
-// ---------------------------------
 
 function sendText() {
     const text = document.getElementById("textInput").value.trim();
@@ -169,72 +184,60 @@ function sendText() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ user_text: text })
     })
-    .then(res => res.json())
+    .then(r => r.json())
     .then(data => {
         addMessage(data.bot_reply);
 
         const audio = document.getElementById("responseAudio");
         audio.src = data.audio_url;
-        audio.play().catch(e => console.log("Autoplay prevented:", e));
+        audio.play().catch(()=>{});
     });
 }
 
 function toggleRecording() {
-    if (!isRecording) {
-        startRecording();
-    } else {
-        stopRecording();
-    }
+    if (!isRecording) startRec();
+    else stopRec();
 }
 
-function startRecording() {
+function startRec() {
     navigator.mediaDevices.getUserMedia({ audio: true }).then(stream => {
         mediaRecorder = new MediaRecorder(stream);
         audioChunks = [];
-        mediaRecorder.ondataavailable = event => audioChunks.push(event.data);
 
-        showToast("🎙️ Recording started");
-
+        mediaRecorder.ondataavailable = e => audioChunks.push(e.data);
         mediaRecorder.onstop = () => {
-            showToast("🛑 Recording stopped");
+            const blob = new Blob(audioChunks, { type: "audio/wav" });
+            let form = new FormData();
+            form.append("audio", blob, "input.wav");
 
-            let blob = new Blob(audioChunks, { type: "audio/wav" });
-            let formData = new FormData();
-            formData.append("audio", blob, "input.wav");
-
-            fetch("/process_audio", {
-                method: "POST",
-                body: formData
-            })
-            .then(res => res.json())
+            fetch("/process_audio", { method: "POST", body: form })
+            .then(r => r.json())
             .then(data => {
                 addMessage(data.user_text, true);
                 addMessage(data.bot_reply);
 
                 const audio = document.getElementById("responseAudio");
                 audio.src = data.audio_url;
-                audio.play().catch(e => console.log("Autoplay prevented:", e));
+                audio.play().catch(()=>{});
             });
         };
 
         mediaRecorder.start();
         isRecording = true;
+        showToast("🎙️ Recording...");
         document.getElementById("micBtn").innerText = "⏹️";
-    }).catch(err => console.error("Microphone Error:", err));
+    });
 }
 
-function stopRecording() {
-    if (mediaRecorder && isRecording) {
-        mediaRecorder.stop();
-        isRecording = false;
-        document.getElementById("micBtn").innerText = "🎤";
-    }
+function stopRec() {
+    mediaRecorder.stop();
+    isRecording = false;
+    showToast("🛑 Stopped");
+    document.getElementById("micBtn").innerText = "🎤";
 }
 
-document.getElementById("textInput").addEventListener("keypress", function(e) {
-    if (e.key === "Enter") {
-        sendText();
-    }
+document.getElementById("textInput").addEventListener("keypress", e => {
+    if (e.key === "Enter") sendText();
 });
 </script>
 
