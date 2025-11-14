@@ -4,4 +4,3 @@ speechrecognition
 pydub
 gTTS
 groq
-pyaudio
